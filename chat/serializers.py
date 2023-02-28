@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
 from django.db import transaction
 from rest_framework import serializers
@@ -16,7 +17,7 @@ class ThreadSerializer(serializers.ModelSerializer):
         """
         Returns the last message of the thread.
         """
-        last_message = obj.messages.order_by("-created").first()
+        last_message = obj.messages.last()
         if last_message:
             return MessageSerializer(last_message).data
 
@@ -29,17 +30,17 @@ class ThreadSerializer(serializers.ModelSerializer):
         with transaction.atomic():
             members = validated_data.pop("participants")
             participants = [
-                User.objects.get(id=member.id).id for member in members
+                get_user_model().objects.get(id=member.id).id for member in members
             ]
             thread = Thread.objects.filter(
                 participants=participants[0]
             ).filter(participants=participants[1])
             if thread.exists():
                 return thread.first()
-            else:
-                thread = Thread.objects.create()
-                thread.participants.set(participants)
-                return thread
+
+            thread = Thread.objects.create()
+            thread.participants.set(participants)
+            return thread
 
     # Validate the participants of the thread
     def validate_participants(self, attrs):
@@ -70,8 +71,7 @@ class ThreadRetrieveSerializer(serializers.ModelSerializer):
         fields = ("id", "messages")
 
     def get_messages(self, obj):
-        thread_id = obj.id
-        messages = Message.objects.filter(thread_id=thread_id)
+        messages = Message.objects.filter(thread_id=obj.id)
         return MessageSerializer(messages, many=True).data
 
 
@@ -122,8 +122,8 @@ class UserSerializer(serializers.ModelSerializer):
     unread_messages = serializers.SerializerMethodField()
 
     class Meta:
-        model = User
-        fields = ["id", "username", "unread_messages"]
+        model = get_user_model()
+        fields = ("id", "username", "unread_messages")
 
     def get_unread_messages(self, user):
         """Calculate and return the number of unread messages for the user."""
